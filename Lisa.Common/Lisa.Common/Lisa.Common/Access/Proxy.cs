@@ -15,7 +15,7 @@ namespace Lisa.Common.Access
         {
         }
 
-        public Proxy(string baseUrl, string resourceUrl, string token, string tokenType)
+        public Proxy(string baseUrl, string resourceUrl, string tokenType, string token)
         {
             _apiBaseUrl = baseUrl.Trim('/');
             _proxyResourceUrl = resourceUrl.Trim('/');
