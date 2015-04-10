@@ -125,8 +125,20 @@ namespace Lisa.Common.Access
             throw new Exception("Unexpected statuscode");
         }
 
-        public async Task<T> PostAsync(T model)
+        public async Task<T> PostAsync(T model, Uri uri = null, List<Uri> redirectUriList = null)
         {
+            if (redirectUriList != null)
+            {
+                if (redirectUriList.Contains(uri))
+                {
+                    throw new Exception("Endless redirect loop");
+                }
+            }
+            else
+            {
+                redirectUriList = new List<Uri>();
+            }
+
             var request = new HttpRequestMessage
             {
                 Method = HttpMethod.Post,
@@ -138,36 +150,121 @@ namespace Lisa.Common.Access
 
             switch (result.StatusCode)
             {
-                
+                case HttpStatusCode.OK:
+                case HttpStatusCode.Created:
+                case HttpStatusCode.Accepted:
+                case HttpStatusCode.BadRequest:
+                    return await DeserializeSingle(result);
+
+                case HttpStatusCode.TemporaryRedirect:
+                case HttpStatusCode.Redirect:
+                case HttpStatusCode.RedirectMethod:
+                    if (result.Headers.Location != null)
+                    {
+                        redirectUriList.Add(result.Headers.Location);
+                        return await PostAsync(model, result.Headers.Location, redirectUriList);
+                    }
+                    break;
+                case HttpStatusCode.Unauthorized:
+                case HttpStatusCode.Forbidden:
+                    throw new Exception("Unauthorized");
             }
 
-            return await DeserializeSingle(result);
+            throw new Exception("Unexpected statuscode");
         }
 
-        public async Task<T> PatchAsync(int id, T model)
+        public async Task<T> PatchAsync(int id, T model, Uri uri = null, List<Uri> redirectUriList = null)
         {
+            if (redirectUriList != null)
+            {
+                if (redirectUriList.Contains(uri))
+                {
+                    throw new Exception("Endless redirect loop");
+                }
+            }
+            else
+            {
+                redirectUriList = new List<Uri>();
+            }
+
             var request = new HttpRequestMessage
             {
                 Method = new HttpMethod("PATCH"),
                 RequestUri = new Uri(String.Format("{0}/{1}", _proxyResourceUrl, id)),
-                Content = new StringContent(JsonConvert.SerializeObject(model, _jsonSerializerSettings), Encoding.UTF8, "application/json")
+                Content = new StringContent(JsonConvert.SerializeObject(model, _jsonSerializerSettings), Encoding.UTF8, "Application/json")
             };
 
             var result = await _httpClient.SendAsync(request);
-            return await DeserializeSingle(result);
+
+            switch (result.StatusCode)
+            {
+                case HttpStatusCode.OK:
+                case HttpStatusCode.Accepted:
+                case HttpStatusCode.NoContent:
+                case HttpStatusCode.BadRequest:
+                    return await DeserializeSingle(result);
+
+                case HttpStatusCode.TemporaryRedirect:
+                case HttpStatusCode.Redirect:
+                case HttpStatusCode.RedirectMethod:
+                    if (result.Headers.Location != null)
+                    {
+                        redirectUriList.Add(result.Headers.Location);
+                        return await PostAsync(model, result.Headers.Location, redirectUriList);
+                    }
+                    break;
+                case HttpStatusCode.Unauthorized:
+                case HttpStatusCode.Forbidden:
+                    throw new Exception("Unauthorized");
+            }
+
+            throw new Exception("Unexpected statuscode");
         }
 
-        public async Task<T> DeleteAsync(int id, T model)
+        public async Task DeleteAsync(int id, Uri uri = null, List<Uri> redirectUriList = null)
         {
+            if (redirectUriList != null)
+            {
+                if (redirectUriList.Contains(uri))
+                {
+                    throw new Exception("Endless redirect loop");
+                }
+            }
+            else
+            {
+                redirectUriList = new List<Uri>();
+            }
+
             var request = new HttpRequestMessage
             {
-                Method = new HttpMethod("PATCH"),
-                RequestUri = new Uri(String.Format("{0}/{1}", _proxyResourceUrl, id)),
-                Content = new StringContent(JsonConvert.SerializeObject(model, _jsonSerializerSettings), Encoding.UTF8, "application/json")
+                Method = new HttpMethod("DELETE"),
+                RequestUri = new Uri(String.Format("{0}/{1}", _proxyResourceUrl, id))
             };
 
             var result = await _httpClient.SendAsync(request);
-            return await DeserializeSingle(result);
+
+            switch (result.StatusCode)
+            {
+                case HttpStatusCode.Accepted:
+                case HttpStatusCode.NoContent:
+                    return;
+
+                case HttpStatusCode.TemporaryRedirect:
+                case HttpStatusCode.Redirect:
+                case HttpStatusCode.RedirectMethod:
+                    if (result.Headers.Location != null)
+                    {
+                        redirectUriList.Add(result.Headers.Location);
+                        await DeleteAsync(id, result.Headers.Location, redirectUriList);
+                        return;
+                    }
+                    break;
+                case HttpStatusCode.Unauthorized:
+                case HttpStatusCode.Forbidden:
+                    throw new Exception("Unauthorized");
+            }
+
+            throw new Exception("Unexpected statuscode");
         }
 
         private async Task<T> DeserializeSingle(HttpResponseMessage response)
