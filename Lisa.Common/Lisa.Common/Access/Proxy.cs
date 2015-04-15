@@ -10,14 +10,15 @@ using Newtonsoft.Json.Serialization;
 
 namespace Lisa.Common.Access
 {
-    public class Proxy<T> where T : class 
+    public class Proxy<T> where T : class
     {
-        public Proxy(string resourceUrl)
+        
+        public Proxy(string resourceUrl, JsonSerializerSettings jsonSerializerSettings = null)
         {
             _proxyResourceUrl = new Uri(resourceUrl.Trim('/'));
             _httpClient = new HttpClient();
 
-            _jsonSerializerSettings = new JsonSerializerSettings
+            _jsonSerializerSettings = jsonSerializerSettings ?? new JsonSerializerSettings
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver(),
                 NullValueHandling = NullValueHandling.Ignore,
@@ -31,30 +32,21 @@ namespace Lisa.Common.Access
             };
         }
 
-        public Proxy(string resourceUrl, string tokenType, string token)
-            : this(resourceUrl)
-        {
-            if (token != null && tokenType != null)
-            {
-                _httpClient.DefaultRequestHeaders.Add("Authorization", String.Format("{0} {1}", tokenType, token));
-            }
-        }
+        public Token Token { get; set; }
 
         public async Task<IEnumerable<T>> GetAsync(Uri uri = null, List<Uri> redirectUriList = null)
         {
-            if (redirectUriList != null)
-            {
-                if (redirectUriList.Contains(uri))
-                {
-                    throw new Exception("Endless redirect loop");
-                }
-            }
-            else
-            {
-                redirectUriList = new List<Uri>();
-            }
+            CheckRedirectLoop(uri, ref redirectUriList);
 
-            var result = await _httpClient.GetAsync(uri ?? _proxyResourceUrl);
+            var request = new HttpRequestMessage
+            {
+                Method = HttpMethod.Get,
+                RequestUri = uri ?? _proxyResourceUrl
+            };
+
+            AddAuthorizationHeader(request);
+
+            var result = await _httpClient.SendAsync(request);
 
             switch (result.StatusCode)
             {
@@ -62,41 +54,40 @@ namespace Lisa.Common.Access
                     return await DeserializeList(result);
 
                 case HttpStatusCode.TemporaryRedirect:
+                case HttpStatusCode.Redirect:
+                case HttpStatusCode.RedirectMethod:
                     if (result.Headers.Location != null)
                     {
                         redirectUriList.Add(result.Headers.Location);
                         return await GetAsync(result.Headers.Location, redirectUriList);
                     }
-                    break;
+                    throw new WebApiException("Redirect without Location provided", result.StatusCode);
 
                 case HttpStatusCode.Unauthorized:
                 case HttpStatusCode.Forbidden:
-                    throw new Exception("Unauthorized");
+                    throw new UnauthorizedAccessException();
 
                 case HttpStatusCode.NotFound:
                 case HttpStatusCode.Gone:
                     return null;
             }
 
-            throw new Exception("Unexpected statuscode");
+            throw new WebApiException("Unexpected statuscode", result.StatusCode);
         }
-
 
         public async Task<T> GetAsync(int id, Uri uri = null, List<Uri> redirectUriList = null)
         {
-            if (redirectUriList != null)
-            {
-                if (redirectUriList.Contains(uri))
-                {
-                    throw new Exception("Endless redirect loop");
-                }
-            }
-            else
-            {
-                redirectUriList = new List<Uri>();
-            }
+            CheckRedirectLoop(uri, ref redirectUriList);
 
-            var result = await _httpClient.GetAsync(uri ?? new Uri(string.Format("{0}/{1}", _proxyResourceUrl, id)));
+            var request = new HttpRequestMessage
+            {
+                Method = HttpMethod.Get,
+                RequestUri = uri ?? new Uri(string.Format("{0}/{1}", _proxyResourceUrl, id))
+            };
+
+            var result = await _httpClient.SendAsync(request);
+
+            AddAuthorizationHeader(request);
 
             switch (result.StatusCode)
             {
@@ -111,33 +102,23 @@ namespace Lisa.Common.Access
                         redirectUriList.Add(result.Headers.Location);
                         return await GetAsync(id, result.Headers.Location, redirectUriList);
                     }
-                    break;
+                    throw new WebApiException("Redirect without Location provided", result.StatusCode);
 
                 case HttpStatusCode.Unauthorized:
                 case HttpStatusCode.Forbidden:
-                    throw new Exception("Unauthorized");
+                    throw new UnauthorizedAccessException();
 
                 case HttpStatusCode.NotFound:
                 case HttpStatusCode.Gone:
                     return null;
             }
 
-            throw new Exception("Unexpected statuscode");
+            throw new WebApiException("Unexpected statuscode", result.StatusCode);
         }
 
         public async Task<T> PostAsync(T model, Uri uri = null, List<Uri> redirectUriList = null)
         {
-            if (redirectUriList != null)
-            {
-                if (redirectUriList.Contains(uri))
-                {
-                    throw new Exception("Endless redirect loop");
-                }
-            }
-            else
-            {
-                redirectUriList = new List<Uri>();
-            }
+            CheckRedirectLoop(uri, ref redirectUriList);
 
             var request = new HttpRequestMessage
             {
@@ -145,6 +126,8 @@ namespace Lisa.Common.Access
                 RequestUri = _proxyResourceUrl,
                 Content = new StringContent(JsonConvert.SerializeObject(model, _jsonSerializerSettings), Encoding.UTF8, "Application/json")
             };
+
+            AddAuthorizationHeader(request);
 
             var result = await _httpClient.SendAsync(request);
 
@@ -164,28 +147,19 @@ namespace Lisa.Common.Access
                         redirectUriList.Add(result.Headers.Location);
                         return await PostAsync(model, result.Headers.Location, redirectUriList);
                     }
-                    break;
+                    throw new WebApiException("Redirect without Location provided", result.StatusCode);
+
                 case HttpStatusCode.Unauthorized:
                 case HttpStatusCode.Forbidden:
-                    throw new Exception("Unauthorized");
+                    throw new UnauthorizedAccessException();
             }
 
-            throw new Exception("Unexpected statuscode");
+            throw new WebApiException("Unexpected statuscode", result.StatusCode);
         }
 
         public async Task<T> PatchAsync(int id, T model, Uri uri = null, List<Uri> redirectUriList = null)
         {
-            if (redirectUriList != null)
-            {
-                if (redirectUriList.Contains(uri))
-                {
-                    throw new Exception("Endless redirect loop");
-                }
-            }
-            else
-            {
-                redirectUriList = new List<Uri>();
-            }
+            CheckRedirectLoop(uri, ref redirectUriList);
 
             var request = new HttpRequestMessage
             {
@@ -193,6 +167,8 @@ namespace Lisa.Common.Access
                 RequestUri = new Uri(String.Format("{0}/{1}", _proxyResourceUrl, id)),
                 Content = new StringContent(JsonConvert.SerializeObject(model, _jsonSerializerSettings), Encoding.UTF8, "Application/json")
             };
+
+            AddAuthorizationHeader(request);
 
             var result = await _httpClient.SendAsync(request);
 
@@ -212,34 +188,27 @@ namespace Lisa.Common.Access
                         redirectUriList.Add(result.Headers.Location);
                         return await PostAsync(model, result.Headers.Location, redirectUriList);
                     }
-                    break;
+                    throw new WebApiException("Redirect without Location provided", result.StatusCode);
+                    
                 case HttpStatusCode.Unauthorized:
                 case HttpStatusCode.Forbidden:
-                    throw new Exception("Unauthorized");
+                    throw new UnauthorizedAccessException();
             }
 
-            throw new Exception("Unexpected statuscode");
+            throw new WebApiException("Unexpected statuscode", result.StatusCode);
         }
 
         public async Task DeleteAsync(int id, Uri uri = null, List<Uri> redirectUriList = null)
         {
-            if (redirectUriList != null)
-            {
-                if (redirectUriList.Contains(uri))
-                {
-                    throw new Exception("Endless redirect loop");
-                }
-            }
-            else
-            {
-                redirectUriList = new List<Uri>();
-            }
+            CheckRedirectLoop(uri, ref redirectUriList);
 
             var request = new HttpRequestMessage
             {
                 Method = new HttpMethod("DELETE"),
                 RequestUri = new Uri(String.Format("{0}/{1}", _proxyResourceUrl, id))
             };
+
+            AddAuthorizationHeader(request);
 
             var result = await _httpClient.SendAsync(request);
 
@@ -258,13 +227,32 @@ namespace Lisa.Common.Access
                         await DeleteAsync(id, result.Headers.Location, redirectUriList);
                         return;
                     }
-                    break;
+                    throw new WebApiException("Redirect without Location provided", result.StatusCode);
+
                 case HttpStatusCode.Unauthorized:
                 case HttpStatusCode.Forbidden:
-                    throw new Exception("Unauthorized");
+                    throw new UnauthorizedAccessException();
             }
 
-            throw new Exception("Unexpected statuscode");
+            throw new WebApiException("Unexpected statuscode", result.StatusCode);
+        }
+
+        private void CheckRedirectLoop(Uri uri, ref List<Uri> redirectUriList)
+        {
+            if (redirectUriList != null && redirectUriList.Contains(uri))
+            {
+                throw new WebApiException("Endless redirect loop", HttpStatusCode.Redirect);
+            }
+            
+            redirectUriList = new List<Uri>();
+        }
+
+        private void AddAuthorizationHeader(HttpRequestMessage request)
+        {
+            if (Token != null && string.IsNullOrEmpty(Token.Value))
+            {
+                request.Headers.Add("Authorization", String.Format("{0} {1}", Token.Type, Token.Value));
+            }
         }
 
         private async Task<T> DeserializeSingle(HttpResponseMessage response)
