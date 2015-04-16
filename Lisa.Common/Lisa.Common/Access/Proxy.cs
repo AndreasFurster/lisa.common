@@ -12,8 +12,7 @@ namespace Lisa.Common.Access
 {
     public class Proxy<T> where T : class
     {
-        
-        public Proxy(string resourceUrl, JsonSerializerSettings jsonSerializerSettings = null)
+        public Proxy(string resourceUrl, JsonSerializerSettings jsonSerializerSettings)
         {
             _proxyResourceUrl = new Uri(resourceUrl.Trim('/'));
             _httpClient = new HttpClient();
@@ -32,6 +31,10 @@ namespace Lisa.Common.Access
             };
         }
 
+        public Proxy(string resourceUrl) : this(resourceUrl, null)
+        {
+        }
+
         public Token Token { get; set; }
 
         public async Task<IEnumerable<T>> GetAsync(Uri uri = null, List<Uri> redirectUriList = null)
@@ -44,7 +47,7 @@ namespace Lisa.Common.Access
                 RequestUri = uri ?? _proxyResourceUrl
             };
 
-            AddAuthorizationHeader(request);
+            AddAuthorizationHeader(ref request);
 
             var result = await _httpClient.SendAsync(request);
 
@@ -85,10 +88,10 @@ namespace Lisa.Common.Access
                 RequestUri = uri ?? new Uri(string.Format("{0}/{1}", _proxyResourceUrl, id))
             };
 
+            AddAuthorizationHeader(ref request);
+            
             var result = await _httpClient.SendAsync(request);
-
-            AddAuthorizationHeader(request);
-
+            
             switch (result.StatusCode)
             {
                 case HttpStatusCode.OK:
@@ -127,7 +130,7 @@ namespace Lisa.Common.Access
                 Content = new StringContent(JsonConvert.SerializeObject(model, _jsonSerializerSettings), Encoding.UTF8, "Application/json")
             };
 
-            AddAuthorizationHeader(request);
+            AddAuthorizationHeader(ref request);
 
             var result = await _httpClient.SendAsync(request);
 
@@ -168,7 +171,7 @@ namespace Lisa.Common.Access
                 Content = new StringContent(JsonConvert.SerializeObject(model, _jsonSerializerSettings), Encoding.UTF8, "Application/json")
             };
 
-            AddAuthorizationHeader(request);
+            AddAuthorizationHeader(ref request);
 
             var result = await _httpClient.SendAsync(request);
 
@@ -208,7 +211,7 @@ namespace Lisa.Common.Access
                 RequestUri = new Uri(String.Format("{0}/{1}", _proxyResourceUrl, id))
             };
 
-            AddAuthorizationHeader(request);
+            AddAuthorizationHeader(ref request);
 
             var result = await _httpClient.SendAsync(request);
 
@@ -247,7 +250,7 @@ namespace Lisa.Common.Access
             redirectUriList = new List<Uri>();
         }
 
-        private void AddAuthorizationHeader(HttpRequestMessage request)
+        private void AddAuthorizationHeader(ref HttpRequestMessage request)
         {
             if (Token != null && string.IsNullOrEmpty(Token.Value))
             {
