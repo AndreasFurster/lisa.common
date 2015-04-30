@@ -252,7 +252,7 @@ namespace Lisa.Common.Access
 
         private void AddAuthorizationHeader(ref HttpRequestMessage request)
         {
-            if (Token != null && string.IsNullOrEmpty(Token.Value))
+            if (Token != null && !string.IsNullOrEmpty(Token.Value))
             {
                 request.Headers.Add("Authorization", String.Format("{0} {1}", Token.Type, Token.Value));
             }
