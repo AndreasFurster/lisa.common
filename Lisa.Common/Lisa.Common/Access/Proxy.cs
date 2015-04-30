@@ -31,7 +31,8 @@ namespace Lisa.Common.Access
             };
         }
 
-        public Proxy(string resourceUrl) : this(resourceUrl, null)
+        public Proxy(string resourceUrl)
+            : this(resourceUrl, null)
         {
         }
 
@@ -89,9 +90,9 @@ namespace Lisa.Common.Access
             };
 
             AddAuthorizationHeader(ref request);
-            
+
             var result = await _httpClient.SendAsync(request);
-            
+
             switch (result.StatusCode)
             {
                 case HttpStatusCode.OK:
@@ -141,6 +142,9 @@ namespace Lisa.Common.Access
                 case HttpStatusCode.Accepted:
                 case HttpStatusCode.BadRequest:
                     return await DeserializeSingle(result);
+
+                case HttpStatusCode.NoContent:
+                    return null;
 
                 case HttpStatusCode.TemporaryRedirect:
                 case HttpStatusCode.Redirect:
@@ -192,7 +196,7 @@ namespace Lisa.Common.Access
                         return await PostAsync(model, result.Headers.Location, redirectUriList);
                     }
                     throw new WebApiException("Redirect without Location provided", result.StatusCode);
-                    
+
                 case HttpStatusCode.Unauthorized:
                 case HttpStatusCode.Forbidden:
                     throw new UnauthorizedAccessException();
@@ -246,7 +250,7 @@ namespace Lisa.Common.Access
             {
                 throw new WebApiException("Endless redirect loop", HttpStatusCode.Redirect);
             }
-            
+
             redirectUriList = new List<Uri>();
         }
 
